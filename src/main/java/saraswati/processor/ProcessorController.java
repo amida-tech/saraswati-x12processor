@@ -2,6 +2,7 @@ package saraswati.processor;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 
 import org.springframework.cloud.stream.messaging.Processor;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -13,37 +14,47 @@ import com.imsweb.x12.*;
 
 @EnableBinding(Processor.class)
 public class ProcessorController {
- 
-    
+
+    static final int TOTAL_NUM_OF_ELEMENTS = 15;
+
     public Segment parseSegment(String line){
         
         Segment segment = new Segment();
-        String [] elementStr = line.split("*", 10);
+        String [] elementStr = line.split("*", TOTAL_NUM_OF_ELEMENTS);
         int count = 0;
 
         //Add individual elements and subelements to segment
+        segment.setId(elementStr[count]);
         for(String eleStr : elementStr){
-            Element element = new Element(elementStr[count], elementStr[count+1]);
-            segment.addElement(element);
             count++;
+            String id = "0"+ String.valueOf(count);  
+            Element element = new Element(id, eleStr);
+            segment.addElement(element);
         }        
 
         return segment;
     }
 
-    public Loop parseLoop(String current, File currentFile) throws IOException{
+    public Loop parseLoop(int count, File file) throws IOException{
 
         Loop loop = new Loop();
-        BufferedReader br = new BufferedReader(new FileReader(currentFile));
+        BufferedReader br = new BufferedReader(new FileReader(file));
+        String line;
 
         //Add segments to the loop, call recursively for inner loops
-        for(String line = current; current != null; current = br.readLine()){
+        for (int i = 0; i < count; i++){
+            br.readLine();
+        }
+
+        for(line = br.readLine(); line != null; line = br.readLine()){
             loop.addSegment(parseSegment(line));
             if(line.contains("HL")||line.contains("NM1")){
-                parseLoop(current, currentFile);
+                count++;
+                loop.addLoop(1, parseLoop(count, file));
             }
         }
 
+        br.close();
         return loop;
     }
 
@@ -52,17 +63,19 @@ public class ProcessorController {
         BufferedReader br = new BufferedReader(new FileReader(filename));
         X12 x12 = new X12();
         int count = 0;
+        int lineCount = 0;
 
-        for( String line = br.readLine(); line != null; line = br.readLine()){    
+        for(String line = br.readLine(); line != null; line = br.readLine()){    
             if(line.contains("HL") || line.contains("NM1")){
-                x12.addLoop(count, parseLoop(line, filename));
-                count++;
+                lineCount++;
+                x12.addLoop(count, parseLoop(lineCount, filename));
             } else {    
                 x12.addSegment(parseSegment(line));
-                count++;
             }
+            count++;
         }
 
+        br.close();
     }
 
     @StreamListener(Processor.INPUT)
