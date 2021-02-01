@@ -2,6 +2,8 @@ package saraswati.processor;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.List;
 
 //import org.springframework.cloud.stream.messaging.Processor;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -14,12 +16,10 @@ import com.imsweb.x12.*;
 //@EnableBinding(Processor.class)
 public class ProcessorController {
 
-    static final int TOTAL_NUM_OF_ELEMENTS = 15;
-
     public Segment parseSegment(String line){
         
         Segment segment = new Segment();
-        String [] elementStr = line.split("*", TOTAL_NUM_OF_ELEMENTS);
+        String [] elementStr = line.split("\\*");
         int count = 0;
 
         //Add individual elements and subelements to segment
@@ -34,56 +34,57 @@ public class ProcessorController {
         return segment;
     }
 
-    public Loop parseLoop(int id, int lineCount, File file) throws IOException{
-
-        Loop loop = new Loop();
-        BufferedReader br = new BufferedReader(new FileReader(file));
-        String line;
+    public Loop parseLoop(List<String> lines){
         
         //Find line to start new loop
-        //Add segments to the loop, call recursively for inner loops
-        for (int i = 0; i < lineCount; i++){
-            br.readLine();
+        //Add segments/loops to the loop
+        int index = 0;
+        Loop outerLoop = new Loop();
+
+        for(int i = 0,j = 0,k = 0; i < lines.size(); i++, j++, k++){
+            if(j % 5 == 0 && lines.get(i).contains("HL") || lines.get(i).contains("NM1") || lines.get(i).contains("N1")){
+                Loop loop = new Loop();      
+                while(j < lines.size()){
+                    loop.addSegment(parseSegment(lines.get(j)));   
+                }
+                if(k % 10 == 0 && lines.get(i).contains("HL") || lines.get(i).contains("NM1") || lines.get(i).contains("N1")){
+                    Loop newLoop = new Loop();
+                    while(k < lines.size()){
+                        newLoop.addSegment(parseSegment(lines.get(k)));
+                    }
+                    loop.addLoop(index, newLoop);
+                }
+            outerLoop.addLoop(index, loop);
+            } 
+        
         }
 
-        for(line = br.readLine(); line != null; line = br.readLine()){
-            loop.addSegment(parseSegment(line));
-            if(line.contains("HL")||line.contains("NM1")){
-                lineCount++;
-                loop.addLoop(id+10, parseLoop(id, lineCount, file));
-            }
-        }
-
-        br.close();
-        return loop;
+        return outerLoop;
     }
 
-    public void parseEdi(File filename) throws IOException{
+    public void parseEdi(List<String> lines){
 
-        BufferedReader br = new BufferedReader(new FileReader(filename));
         X12 x12 = new X12();
-        int id = 1;
-        int lineCount = 0;
+        int index = 0;
 
-        for(String line = br.readLine(); line != null; line = br.readLine()){    
-            if(line.contains("HL") || line.contains("NM1")){
-                lineCount++;
-                x12.addLoop(id, parseLoop(id, lineCount, filename));
+        for(int i = 0; i < lines.size(); i++) {
+            if(lines.get(i).contains("HL") || lines.get(i).contains("NM1") || lines.get(i).contains("N1")){
+                x12.addLoop(index, parseLoop(lines));
+                index++;
             } else {    
-                x12.addSegment(parseSegment(line));
+                x12.addSegment(parseSegment(lines.get(i)));
             }
-            id++;
+
         }
 
-        br.close();
     }
 
     //@StreamListener(Processor.INPUT)
     //@SendTo(Processor.OUTPUT)
-    public String receive(@Payload byte[] bytes) throws Exception{
+    public String receive(@Payload byte[] bytes){
         String message = new String(bytes, StandardCharsets.UTF_8);
-        File filename = new File(message);
-        parseEdi(filename);
+        List<String> lines = Arrays.asList(message.split("~"));
+        parseEdi(lines);
         return null;
     }
 
