@@ -34,48 +34,34 @@ public class ProcessorController {
         return segment;
     }
 
-    public Loop parseLoop(List<String> lines){
-        
-        //Find line to start new loop
-        //Add segments/loops to the loop
-        int index = 0;
-        Loop outerLoop = new Loop();
+    public void parseLoop(Loop loop, List<String> data, int start, int end){
 
-        for(int i = 0,j = 0,k = 0; i < lines.size(); i++, j++, k++){
-            if(j % 5 == 0 && lines.get(i).contains("HL") || lines.get(i).contains("NM1") || lines.get(i).contains("N1")){
-                Loop loop = new Loop();      
-                while(j < lines.size()){
-                    loop.addSegment(parseSegment(lines.get(j)));   
-                }
-                if(k % 10 == 0 && lines.get(i).contains("HL") || lines.get(i).contains("NM1") || lines.get(i).contains("N1")){
-                    Loop newLoop = new Loop();
-                    while(k < lines.size()){
-                        newLoop.addSegment(parseSegment(lines.get(k)));
-                    }
-                    loop.addLoop(index, newLoop);
-                }
-            outerLoop.addLoop(index, loop);
-            } 
-        
+        for(int i = start; i <= end; i++){
+            loop.addSegment(parseSegment(data.get(i)));
         }
 
-        return outerLoop;
     }
 
     public void parseEdi(List<String> lines){
 
         X12 x12 = new X12();
-        int index = 0;
+        Loop loop_header = new Loop();
+        Loop loop_provider = new Loop();
+        Loop loop_subscriber = new Loop();
+        Loop loop_client = new Loop();
+        Loop loop_claim_info = new Loop();
 
-        for(int i = 0; i < lines.size(); i++) {
-            if(lines.get(i).contains("HL") || lines.get(i).contains("NM1") || lines.get(i).contains("N1")){
-                x12.addLoop(index, parseLoop(lines));
-                index++;
-            } else {    
-                x12.addSegment(parseSegment(lines.get(i)));
-            }
+        parseLoop(loop_header, lines, 0, 6);
+        parseLoop(loop_provider, lines, 7, 17);
+        parseLoop(loop_subscriber, lines, 18, 27);
+        parseLoop(loop_client, lines, 28, 38);
+        parseLoop(loop_claim_info, lines, 39, lines.size());
 
-        }
+        x12.addLoop(1000, loop_header);
+        x12.addLoop(2000, loop_provider);
+        x12.addLoop(1000, loop_subscriber);
+        x12.addLoop(1000, loop_client);
+        x12.addLoop(1000, loop_claim_info);
 
     }
 
@@ -87,8 +73,5 @@ public class ProcessorController {
         parseEdi(lines);
         return null;
     }
-
-
-
-    
+   
 }
